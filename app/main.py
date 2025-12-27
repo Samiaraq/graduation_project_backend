@@ -6,9 +6,12 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .database import engine, SessionLocal
+from .database import engine
 from . import models
 from .models import User
+
+from .models import PHQ9Answer
+from .database import SessionLocal
 
 # Create tables if not exist
 models.Base.metadata.create_all(bind=engine)
@@ -104,6 +107,7 @@ async def create_assessment(
     text_input: str = Form(""),
     phq_answers: str = Form(...),
     image: UploadFile = File(...),
+    db: Session = Depends(get_db)
 ):
     # Parse PHQ answers safely (JSON list or comma-separated)
     try:
@@ -136,6 +140,24 @@ async def create_assessment(
         phq_level = "Moderately Severe"
     else:
         phq_level = "Severe"
+
+    phq_row = PHQ9Answer(
+        user_id=user_id,
+        q1=answers[0],
+        q2=answers[1],
+        q3=answers[2],
+        q4=answers[3],
+        q5=answers[4],
+        q6=answers[5],
+        q7=answers[6],
+        q8=answers[7],
+        q9=answers[8],
+        total_score=phq_total,
+        depression_level=phq_level
+    )
+
+    db.add(phq_row)
+    db.commit()
 
     # PHQ-9 severity level (AR)
     phq_level_ar_map = {
