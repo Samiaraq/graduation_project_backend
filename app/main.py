@@ -160,4 +160,6 @@ async def create_assessment(
         "phq_level": phq_level,
         "phq_level_ar": phq_level_ar,
         "image_saved_as": file_path,
+        "model_score":4,
+        "model_lebel_ar":"اكتئاب شديد"
     }
