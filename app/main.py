@@ -135,23 +135,18 @@ def parse_phq_answers(phq_answers: str) -> List[int]:
     raw = raw.strip("[]() \n\r\t")
     ans = [int(x.strip()) for x in raw.split(",") if x.strip() != ""]
     return ans
-
 @app.post("/phq/submit")
 def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
-    # 1) ensure user exists
     ensure_user_exists(db, payload.user_id)
 
-    # 2) validate answers
-    answers = payload.phq_answers
+    answers = [int(x) for x in payload.phq_answers]
     if len(answers) != 9:
         raise HTTPException(status_code=400, detail="phq_answers must contain exactly 9 numbers")
 
-    # 3) compute score + level
-    total = sum(int(x) for x in answers)
+    total = sum(answers)
     level = phq_level_from_score(total)
     level_ar = PHQ_AR.get(level, level)
 
-    # 4) save PHQ9Answer row
     phq_row = models.PHQ9Answer(
         user_id=payload.user_id,
         q1=answers[0], q2=answers[1], q3=answers[2],
@@ -162,7 +157,6 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     )
     db.add(phq_row)
 
-    # 5) save DepressionLevel (source=phq9)
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="phq9",
@@ -172,16 +166,14 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(phq_row)
-
-    # 6) return response to API
     return {
         "message": "phq saved",
-        "phq_id": phq_row.id if hasattr(phq_row, "phq_id") else None,
+        "phq_id": getattr(phq_row, "id", None),
         "user_id": payload.user_id,
-        "received_answers": answers,
-        "total_score": total,
-        "level": level,
-        "level_ar": level_ar,
+        "phq_total": total,
+        "phq_level": level,
+        "phq_level_ar": level_ar,
+        "answers": answers,
     }
 
 def ensure_user_exists(db: Session, user_id: int):
