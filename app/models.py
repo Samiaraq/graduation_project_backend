@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
+import torch
+import torch.nn as nn
 from .database import Base
 
 
@@ -106,3 +107,21 @@ class PasswordResetToken(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     user = relationship("User", back_populates="reset_tokens")
+
+class MLP(nn.Module):
+    def __init__(self, in_dim, num_classes):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, 16),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(16, 8),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(8, 4),
+            nn.ReLU(),
+            nn.Linear(4, num_classes)  # logits
+        )
+
+    def forward(self, x):
+        return self.net(x)

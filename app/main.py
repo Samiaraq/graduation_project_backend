@@ -6,7 +6,8 @@ from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from app.models import MLP
+from app.ml_models.model_loader import load_phq9_model
 from .database import engine, get_db
 from . import models
 
@@ -16,12 +17,16 @@ app = FastAPI(title="Graduation Project API")
 # uploads folder (ملاحظة: على Render الملفات مش دائمة إلا إذا فعلتي Disk)
 os.makedirs("uploads", exist_ok=True)
 
-
+phq9_model = None
 @app.on_event("startup")
 def on_startup():
+    global phq9_model
+
     # Create tables if not exist
     models.Base.metadata.create_all(bind=engine)
-
+    # Load PHQ-9 model once
+    phq9_model = load_phq9_model(MLP)
+    print("PHQ9 model loaded:", type(phq9_model))
 
 # ----------------------------
 # Basic endpoints
@@ -74,7 +79,9 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
 
     return {"message": "User registered successfully", "user_id": user.user_id}
 
-
+class PHQRequest(BaseModel):
+    user_id: int
+    phq_answers: List[int]
 @app.post("/auth/login")
 def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email).first()
@@ -129,6 +136,27 @@ def parse_phq_answers(phq_answers: str) -> List[int]:
     ans = [int(x.strip()) for x in raw.split(",") if x.strip() != ""]
     return ans
 
+@app.post("/phq/submit")
+def submit_phq(payload: PHQRequest):
+    # 1) مجموع PHQ
+    total = sum(payload.phq_answers)
+
+    # 2) Prediction من الموديل (إذا محمّل)
+    pred_class = None
+    if phq9_model is not None:
+        import torch
+
+        x = torch.tensor([payload.phq_answers], dtype=torch.float32)  # shape: (1, 9)
+        with torch.no_grad():
+            logits = phq9_model(x)
+            pred_class = int(torch.argmax(logits, dim=1).item())
+
+    return {
+        "received_user_id": payload.user_id,
+        "received_answers": payload.phq_answers,
+        "total_score": total,
+        "model_pred_class": pred_class
+    }
 
 def ensure_user_exists(db: Session, user_id: int):
     user = db.query(models.User).filter(models.User.user_id == user_id).first()
@@ -276,3 +304,4 @@ async def upload_image(
     db.refresh(row)
 
     return {"message": "image saved", "image_id": row.image_id, "image_path": file_path}
+
