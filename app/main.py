@@ -137,25 +137,51 @@ def parse_phq_answers(phq_answers: str) -> List[int]:
     return ans
 
 @app.post("/phq/submit")
-def submit_phq(payload: PHQRequest):
-    # 1) مجموع PHQ
-    total = sum(payload.phq_answers)
+def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
+    # 1) ensure user exists
+    ensure_user_exists(db, payload.user_id)
 
-    # 2) Prediction من الموديل (إذا محمّل)
-    pred_class = None
-    if phq9_model is not None:
-        import torch
+    # 2) validate answers
+    answers = payload.phq_answers
+    if len(answers) != 9:
+        raise HTTPException(status_code=400, detail="phq_answers must contain exactly 9 numbers")
 
-        x = torch.tensor([payload.phq_answers], dtype=torch.float32)  # shape: (1, 9)
-        with torch.no_grad():
-            logits = phq9_model(x)
-            pred_class = int(torch.argmax(logits, dim=1).item())
+    # 3) compute score + level
+    total = sum(int(x) for x in answers)
+    level = phq_level_from_score(total)
+    level_ar = PHQ_AR.get(level, level)
 
+    # 4) save PHQ9Answer row
+    phq_row = models.PHQ9Answer(
+        user_id=payload.user_id,
+        q1=answers[0], q2=answers[1], q3=answers[2],
+        q4=answers[3], q5=answers[4], q6=answers[5],
+        q7=answers[6], q8=answers[7], q9=answers[8],
+        total_score=total,
+        depression_level=level,
+    )
+    db.add(phq_row)
+
+    # 5) save DepressionLevel (source=phq9)
+    db.add(models.DepressionLevel(
+        user_id=payload.user_id,
+        source="phq9",
+        score=total,
+        level=level,
+    ))
+
+    db.commit()
+    db.refresh(phq_row)
+
+    # 6) return response to API
     return {
-        "received_user_id": payload.user_id,
-        "received_answers": payload.phq_answers,
+        "message": "phq saved",
+        "phq_id": phq_row.id if hasattr(phq_row, "phq_id") else None,
+        "user_id": payload.user_id,
+        "received_answers": answers,
         "total_score": total,
-        "model_pred_class": pred_class
+        "level": level,
+        "level_ar": level_ar,
     }
 
 def ensure_user_exists(db: Session, user_id: int):
