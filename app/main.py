@@ -2,7 +2,7 @@ import os
 import json
 import hashlib
 from typing import Optional, List
-
+from app.ml_models.image.loader import predict_image
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -342,7 +342,6 @@ def save_sentiment(payload: SentimentRequest, db: Session = Depends(get_db)):
 @app.post("/image")
 async def upload_image(
     user_id: int = Form(...),
-    prediction: str = Form(""),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -353,22 +352,33 @@ async def upload_image(
     with open(file_path, "wb") as f:
         f.write(await image.read())
 
+    # prediction من الموديل
+    prob = predict_image(file_path)  # 0..1
+
+    prediction = 1 if prob >= 0.5 else 0
+    label = "depressed" if prediction == 1 else "not_depressed"
+
     row = models.ImageUpload(
         user_id=user_id,
         image_path=file_path,
-        prediction=prediction or None,
+        prediction=prediction,
     )
     db.add(row)
 
-    if prediction:
-        db.add(models.DepressionLevel(
-            user_id=user_id,
-            source="image",
-            score=None,
-            level=prediction,
-        ))
+    db.add(models.DepressionLevel(
+        user_id=user_id,
+        source="image",
+        score=prediction,       # نخزن الاحتمال
+        level=label,      # نخزن التصنيف
+    ))
 
     db.commit()
     db.refresh(row)
 
-    return {"message": "image saved", "image_id": row.image_id, "image_path": file_path}
+    return {
+        "message": "image saved",
+        "image_id": row.image_id,
+        "image_path": file_path,
+        "prediction": prediction,
+        "label": label,
+    }
