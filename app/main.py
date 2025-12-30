@@ -6,7 +6,7 @@ from app.ml_models.image.loader import predict_image
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from app.ml_models.sentemant.loader import load_sent_model
 from .database import engine, get_db
 from . import models
 
@@ -67,6 +67,13 @@ def on_startup():
         phq9_model = None
         print("WARNING: PHQ9 model failed to load. App will run بدون PHQ model.")
         print("ERROR:", repr(e))
+
+    try:
+        sent_model = load_sent_model()
+        print("Sentiment model loaded")
+    except Exception as e:
+        sent_model = None
+        print("Sentiment model NOT loaded:", e)
 
 
 # ----------------------------
@@ -303,39 +310,45 @@ async def create_assessment(
 # ----------------------------
 # Sentiment endpoint
 # ----------------------------
+
+
 class SentimentRequest(BaseModel):
     user_id: int
-    raw_text: str
-    processed_text: Optional[str] = None
-    prediction: Optional[str] = None
+    text: str
 
-
-@app.post("/sentiment")
-def save_sentiment(payload: SentimentRequest, db: Session = Depends(get_db)):
+@app.post("/sentiment/predict")
+def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     ensure_user_exists(db, payload.user_id)
 
+    from app.ml_models.sentemant.predict import predict_depression_text
+
+    label = predict_depression_text(payload.text)
+
+    # نخزن بالـ DB (اختياري حسب جدولك)
     row = models.SentimentEntry(
         user_id=payload.user_id,
-        raw_text=payload.raw_text,
-        processed_text=payload.processed_text,
-        prediction=payload.prediction,
+        raw_text=payload.text,
+        processed_text=None,
+        prediction=label,
     )
     db.add(row)
 
-    if payload.prediction is not None:
-        db.add(models.DepressionLevel(
-            user_id=payload.user_id,
-            source="sentiment",
-            score=None,
-            level=payload.prediction,
-        ))
+    db.add(models.DepressionLevel(
+        user_id=payload.user_id,
+        source="sentiment",
+        score=None,
+        level=label,
+    ))
 
     db.commit()
     db.refresh(row)
 
-    return {"message": "sentiment saved", "sentiment_id": row.sentiment_id}
-
-
+    return {
+        "message": "sentiment predicted",
+        "user_id": payload.user_id,
+        "label": label,
+        "sentiment_id": row.sentiment_id,
+    }
 # ----------------------------
 # Image endpoint (يحفظ صورة + prediction)
 # ----------------------------
