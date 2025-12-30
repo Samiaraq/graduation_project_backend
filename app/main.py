@@ -6,10 +6,13 @@ from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.models import MLP
-from app.ml_models.model_loader import load_phq9_model
+
 from .database import engine, get_db
 from . import models
+
+# ML
+from app.models import MLP
+from app.ml_models.model_loader import load_phq9_model
 
 
 app = FastAPI(title="Graduation Project API")
@@ -18,15 +21,53 @@ app = FastAPI(title="Graduation Project API")
 os.makedirs("uploads", exist_ok=True)
 
 phq9_model = None
+
+
+def build_phq9_mlp():
+    """
+    بنحاول نركّب MLP حسب ال signature الموجود عندك.
+    لأن الخطأ على Render بيحكي إنه MLP بدها باراميترز إلزامية.
+    """
+    # جرّبي أكثر من شكل (positional + named) لحتى يزبط مع أي constructor
+    tries = [
+        lambda: MLP(),                              # إذا عنده defaults
+        lambda: MLP(9, 64),                         # (input_dim, hidden_dim)
+        lambda: MLP(9, 128),
+        lambda: MLP(input_size=9, hidden_size=64),  # (input_size, hidden_size)
+        lambda: MLP(input_dim=9, hidden_dim=64),    # (input_dim, hidden_dim)
+        lambda: MLP(n_features=9, hidden=64),       # تسميات بديلة
+    ]
+
+    last_err = None
+    for t in tries:
+        try:
+            return t()
+        except TypeError as e:
+            last_err = e
+
+    # إذا ولا محاولة زبطت
+    raise TypeError(f"Could not build MLP for PHQ9. Last error: {last_err}")
+
+
 @app.on_event("startup")
 def on_startup():
     global phq9_model
 
     # Create tables if not exist
     models.Base.metadata.create_all(bind=engine)
-    # Load PHQ-9 model once
-    phq9_model = load_phq9_model(MLP)
-    print("PHQ9 model loaded:", type(phq9_model))
+
+    # Load PHQ-9 model once (بس بطريقة ما تكسّر الديبلوي)
+    try:
+        # مهم: نمرر factory/function مش الكلاس مباشرة
+        # عشان model_loader لما يعمل model_class() يطلع موديل جاهز بالباراميترز
+        phq9_model = load_phq9_model(build_phq9_mlp)
+        print("PHQ9 model loaded:", type(phq9_model))
+    except Exception as e:
+        # ما نخلي السيرفر يوقع
+        phq9_model = None
+        print("WARNING: PHQ9 model failed to load. App will run بدون PHQ model.")
+        print("ERROR:", repr(e))
+
 
 # ----------------------------
 # Basic endpoints
@@ -38,7 +79,7 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "phq_model_loaded": phq9_model is not None}
 
 
 # ----------------------------
@@ -79,9 +120,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
 
     return {"message": "User registered successfully", "user_id": user.user_id}
 
-class PHQRequest(BaseModel):
-    user_id: int
-    phq_answers: List[int]
+
 @app.post("/auth/login")
 def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email).first()
@@ -98,6 +137,13 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
 # ----------------------------
 # Helpers
 # ----------------------------
+def ensure_user_exists(db: Session, user_id: int):
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    return user
+
+
 def phq_level_from_score(total: int) -> str:
     if total <= 4:
         return "Minimal"
@@ -126,15 +172,23 @@ def parse_phq_answers(phq_answers: str) -> List[int]:
     try:
         ans = json.loads(raw)
         if isinstance(ans, list):
-            ans = [int(x) for x in ans]
-            return ans
+            return [int(x) for x in ans]
     except Exception:
         pass
 
     # comma separated
     raw = raw.strip("[]() \n\r\t")
-    ans = [int(x.strip()) for x in raw.split(",") if x.strip() != ""]
-    return ans
+    return [int(x.strip()) for x in raw.split(",") if x.strip() != ""]
+
+
+# ----------------------------
+# PHQ submit endpoint (JSON body)
+# ----------------------------
+class PHQRequest(BaseModel):
+    user_id: int
+    phq_answers: List[int]
+
+
 @app.post("/phq/submit")
 def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     ensure_user_exists(db, payload.user_id)
@@ -166,6 +220,7 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(phq_row)
+
     return {
         "message": "phq saved",
         "phq_id": getattr(phq_row, "id", None),
@@ -174,13 +229,8 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         "phq_level": level,
         "phq_level_ar": level_ar,
         "answers": answers,
+        "phq_model_loaded": phq9_model is not None,
     }
-
-def ensure_user_exists(db: Session, user_id: int):
-    user = db.query(models.User).filter(models.User.user_id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="user_id not found")
-    return user
 
 
 # ----------------------------
@@ -229,7 +279,7 @@ async def create_assessment(
     with open(file_path, "wb") as f:
         f.write(await image.read())
 
-    # store image_upload row (prediction لاحقًا لما ندخل model)
+    # store image_upload row
     db.add(models.ImageUpload(
         user_id=user_id,
         image_path=file_path,
@@ -246,17 +296,18 @@ async def create_assessment(
         "phq_level": level,
         "phq_level_ar": level_ar,
         "image_saved_as": file_path,
+        "phq_model_loaded": phq9_model is not None,
     }
 
 
 # ----------------------------
-# Sentiment endpoint (لما ندخل AI model بنحط prediction الحقيقي)
+# Sentiment endpoint
 # ----------------------------
 class SentimentRequest(BaseModel):
     user_id: int
     raw_text: str
     processed_text: Optional[str] = None
-    prediction: Optional[str] = None  # هسا اختياري
+    prediction: Optional[str] = None
 
 
 @app.post("/sentiment")
@@ -271,7 +322,6 @@ def save_sentiment(payload: SentimentRequest, db: Session = Depends(get_db)):
     )
     db.add(row)
 
-    # optional: save to depression_levels too
     if payload.prediction is not None:
         db.add(models.DepressionLevel(
             user_id=payload.user_id,
@@ -287,12 +337,12 @@ def save_sentiment(payload: SentimentRequest, db: Session = Depends(get_db)):
 
 
 # ----------------------------
-# Image prediction endpoint (يحفظ صورة + prediction)
+# Image endpoint (يحفظ صورة + prediction)
 # ----------------------------
 @app.post("/image")
 async def upload_image(
     user_id: int = Form(...),
-    prediction: str = Form(""),  # مؤقتًا
+    prediction: str = Form(""),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -322,4 +372,3 @@ async def upload_image(
     db.refresh(row)
 
     return {"message": "image saved", "image_id": row.image_id, "image_path": file_path}
-
