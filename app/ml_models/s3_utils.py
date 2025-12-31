@@ -1,19 +1,4 @@
-import os
-import boto3
-
-
 def ensure_model_file(filename: str, subdir: str = "models") -> str:
-    """
-    Ensure model file exists locally.
-    If not, download it from S3.
-
-    Env vars required:
-      S3_BUCKET
-      AWS_ACCESS_KEY_ID
-      AWS_SECRET_ACCESS_KEY
-      AWS_REGION (optional)
-    """
-
     bucket = os.getenv("S3_BUCKET")
     if not bucket:
         raise RuntimeError("Missing env var: S3_BUCKET")
@@ -32,12 +17,11 @@ def ensure_model_file(filename: str, subdir: str = "models") -> str:
         region_name=os.getenv("AWS_REGION"),
     )
 
-    print(f"Downloading {filename} from S3 bucket {bucket} ...")
-    subdir = (subdir or "").strip("/")
-    filename = (filename or "").lstrip("/")
+    # 🔴 لا strip ولا لعب
+    key = f"{subdir}/{filename}"
 
-    key = f"{subdir}/{filename}" if subdir else filename
-    print(f"S3 KEY REQUESTED: {key}")
+    print(f"Downloading from S3: bucket={bucket}, key={key}")
+
     s3.download_file(bucket, key, local_path)
 
     return local_path
