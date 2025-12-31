@@ -1,3 +1,5 @@
+import boto3
+import os
 def ensure_model_file(filename: str, subdir: str = "models") -> str:
     bucket = os.getenv("S3_BUCKET")
     if not bucket:

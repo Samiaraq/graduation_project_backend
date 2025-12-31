@@ -1,6 +1,6 @@
 import inspect
 import torch
-
+import os
 from app.ml_models.s3_utils import ensure_model_file
 
 
@@ -47,7 +47,7 @@ def load_phq9_model(model_class):
     # نجيب الموديل من s3
     model_path = ensure_model_file(
         filename="phq9_model.pt",
-        subdir=""
+        subdir="models"
     )
 
     device = torch.device("cpu")  # Render safer
