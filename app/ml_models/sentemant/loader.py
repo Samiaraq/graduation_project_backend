@@ -25,7 +25,7 @@ def load_sentemant():
         #نجيب الموديل من s3
         MODEL_PATH = ensure_model_file(
             filename="SentemantAnalysis.pt",
-            subdir="sentement"
+            subdir=""
         )
 
         state = torch.load(MODEL_PATH, map_location="cpu")
