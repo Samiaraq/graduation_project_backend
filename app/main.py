@@ -39,14 +39,10 @@ os.makedirs("uploads", exist_ok=True)
 
 phq9_model = None
 
+from app.ml_models.phq_9.model_def import MLP
+from app.ml_models.model_loader import load_phq9_model
 
-def build_phq9_mlp():
-    """
-    حسب كودك: MLP(in_dim, num_classes)
-    للـ PHQ غالبًا output واحد (1)
-    """
-    return MLP(11, 5)
-
+phq9_model = None
 
 @app.on_event("startup")
 def on_startup():
@@ -54,17 +50,13 @@ def on_startup():
 
     models.Base.metadata.create_all(bind=engine)
 
-    # PHQ9 load
-    if load_phq9_model and MLP:
-        try:
-            phq9_model = load_phq9_model(build_phq9_mlp)  # loader لازم يقبل callable
-            print("PHQ9 model loaded:", type(phq9_model))
-        except Exception as e:
-            phq9_model = None
-            print("WARNING: PHQ9 model failed to load:", repr(e))
-    else:
-        print("PHQ9 loader not available (skipped).")
-
+    try:
+        # ✅ مرري الـ CLASS نفسه
+        phq9_model = load_phq9_model(MLP)
+        print("PHQ9 model loaded ✅")
+    except Exception as e:
+        phq9_model = None
+        print("WARNING: PHQ9 model failed to load:", repr(e))
 
 @app.get("/")
 def root():
