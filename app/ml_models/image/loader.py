@@ -3,10 +3,8 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
+from app.ml_models.s3_utils import ensure_model_file
 from .model_def import CNN
-
-BASE_DIR = os.path.dirname(__file__)  # app/ml_models/image
-MODEL_PATH = os.path.join(BASE_DIR, "image_model.pt")
 
 _image_model = None
 
@@ -21,15 +19,23 @@ def load_image_model():
     global _image_model
     if _image_model is None:
 
-
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        #نجيب الموديل من s3
+        MODEL_PATH = ensure_model_file(
+            filename="best_model.pt",
+            subdir="image"
+        )
 
         model = CNN().to(device)
         state = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state)
         model.eval()
+
         _image_model = model
+
     return _image_model
+
 
 def predict_image(image_path: str) -> float:
     model = load_image_model()
@@ -40,4 +46,5 @@ def predict_image(image_path: str) -> float:
     with torch.no_grad():
         logits = model(x)
         prob = torch.sigmoid(logits).item()  # 0..1
+
     return float(prob)
