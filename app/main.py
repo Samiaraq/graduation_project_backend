@@ -23,15 +23,12 @@ except Exception:
 
 # PHQ model loader
 try:
-<<<<<<< HEAD
-    from app.models import MLP  # إذا عندك كلاس MLP في ملف ثاني
-=======
     from app.ml_models.phq_9.model_def import MLP
->>>>>>> f5d73912113ed64a87078367bec0efb445d58cb8
     from app.ml_models.model_loader import load_phq9_model
 except Exception:
     MLP = None
     load_phq9_model = None
+
 
 
 app = FastAPI(title="Graduation Project API")
