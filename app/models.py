@@ -1,15 +1,17 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import torch
-import torch.nn as nn
 from .database import Base
 
+# ----------------------------
+# DB Models
+# ----------------------------
 
 class User(Base):
     __tablename__ = "users"
 
     user_id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(Text, nullable=False)
 
@@ -18,7 +20,6 @@ class User(Base):
 
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    # relationships
     phq9_answers = relationship("PHQ9Answer", back_populates="user", cascade="all, delete")
     sentiments = relationship("SentimentEntry", back_populates="user", cascade="all, delete")
     images = relationship("ImageUpload", back_populates="user", cascade="all, delete")
@@ -29,7 +30,7 @@ class User(Base):
 class PHQ9Answer(Base):
     __tablename__ = "phq9_answers"
 
-    id = Column(Integer, primary_key=True, index=True)
+    phq_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
 
     q1 = Column(Integer, nullable=False)
@@ -107,21 +108,3 @@ class PasswordResetToken(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     user = relationship("User", back_populates="reset_tokens")
-
-class MLP(nn.Module):
-    def __init__(self, in_dim, num_classes):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 16),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(8, 4),
-            nn.ReLU(),
-            nn.Linear(4, num_classes)  # logits
-        )
-
-    def forward(self, x):
-        return self.net(x)

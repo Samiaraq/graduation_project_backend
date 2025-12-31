@@ -25,3 +25,7 @@ def load_sentemant():
         _model.eval()
 
     return _model, _tokenizer
+
+
+def load_sent_model():
+    return None
