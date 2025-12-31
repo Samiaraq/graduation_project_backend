@@ -23,7 +23,7 @@ except Exception:
 
 # PHQ model loader
 try:
-    from app.models import MLP  # إذا عندك كلاس MLP في ملف ثاني
+    from app.ml_models.phq_9.model_def import MLP
     from app.ml_models.model_loader import load_phq9_model
 except Exception:
     MLP = None
