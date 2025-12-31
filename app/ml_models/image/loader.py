@@ -24,7 +24,7 @@ def load_image_model():
         #نجيب الموديل من s3
         MODEL_PATH = ensure_model_file(
             filename="best_model.pt",
-            subdir=""
+            subdir="models"
         )
 
         model = CNN().to(device)
