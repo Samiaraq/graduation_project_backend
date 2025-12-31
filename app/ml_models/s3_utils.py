@@ -33,6 +33,8 @@ def ensure_model_file(filename: str, subdir: str = "models") -> str:
     )
 
     print(f"Downloading {filename} from S3 bucket {bucket} ...")
-    s3.download_file(bucket, filename, local_path)
+    key = f"{subdir}/{filename}"
+    print(f"S3 KEY REQUESTED: {key}")
+    s3.download_file(bucket, key, local_path)
 
     return local_path
