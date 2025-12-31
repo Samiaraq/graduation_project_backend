@@ -2,7 +2,9 @@ import os
 import json
 import hashlib
 from typing import Optional, List
-
+from datetime import date
+import datetime
+import torch
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -43,7 +45,7 @@ def build_phq9_mlp():
     حسب كودك: MLP(in_dim, num_classes)
     للـ PHQ غالبًا output واحد (1)
     """
-    return MLP(9, 1)
+    return MLP(11, 5)
 
 
 @app.on_event("startup")
@@ -193,17 +195,36 @@ class PHQRequest(BaseModel):
     phq_answers: List[int]
 
 
+PHQ_LEVELS_5 = ["Minimal", "Mild", "Moderate", "Moderately Severe", "Severe"]
+
+def calc_age(dob_str: str) -> int:
+    if not dob_str:
+        return 0
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            dt = datetime.datetime.strptime(dob_str, fmt).date()
+            today = date.today()
+            age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
+            return max(age, 0)
+        except Exception:
+            continue
+    return 0
+
+
 @app.post("/phq/submit")
 def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
-    ensure_user_exists(db, payload.user_id)
+    user = ensure_user_exists(db, payload.user_id)
 
     answers = [int(x) for x in payload.phq_answers]
     if len(answers) != 9:
         raise HTTPException(status_code=400, detail="phq_answers must contain exactly 9 numbers")
 
+    # --------
+    # (A) نحفظ مثل ما هو (نفس شغلك)
+    # --------
     total = sum(answers)
-    level = phq_level_from_score(total)
-    level_ar = PHQ_AR.get(level, level)
+    level_rule = phq_level_from_score(total)
+    level_rule_ar = PHQ_AR.get(level_rule, level_rule)
 
     phq_row = models.PHQ9Answer(
         user_id=payload.user_id,
@@ -211,15 +232,51 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         q4=answers[3], q5=answers[4], q6=answers[5],
         q7=answers[6], q8=answers[7], q9=answers[8],
         total_score=total,
-        depression_level=level,
+        depression_level=level_rule,   # نخليه نفس التصنيف التقليدي
     )
     db.add(phq_row)
 
+    # --------
+    # (B) تنبؤ الموديل (11 مدخل: 9 + age + gender)
+    # --------
+    model_level = None
+    model_level_ar = None
+    model_class = None
+
+    if phq9_model is not None:
+        age = calc_age(user.dob) if user.dob else 0
+
+        g = (user.gender or "").strip().lower()
+        if g in ["female", "f", "أنثى", "انثى", "بنت", "امرأة", "woman"]:
+            gender_val = 1
+        elif g in ["male", "m", "ذكر", "ولد", "رجل", "man"]:
+            gender_val = 0
+        else:
+            gender_val = 0
+
+        x = answers + [age, gender_val]  # صاروا 11
+
+        with torch.no_grad():
+            inp = torch.tensor([x], dtype=torch.float32)
+            logits = phq9_model(inp)
+            model_class = int(torch.argmax(logits, dim=1).item())
+            model_level = PHQ_LEVELS_5[model_class]
+            model_level_ar = PHQ_AR.get(model_level, model_level)
+
+        # نخزن نتيجة الموديل بجدول depression_levels (كمصدر phq_model)
+        db.add(models.DepressionLevel(
+            user_id=payload.user_id,
+            source="phq_model",
+            score=model_class,      # 0..4
+            level=model_level,
+        ))
+
+    # ونخزن كمان التصنيف التقليدي زي ما كنتي
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="phq9",
         score=total,
-        level=level,
+        level=level_rule,
     ))
 
     db.commit()
@@ -229,13 +286,19 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         "message": "phq saved",
         "phq_id": phq_row.phq_id,
         "user_id": payload.user_id,
+
+        # التقليدي (حسب مجموع الدرجات)
         "phq_total": total,
-        "phq_level": level,
-        "phq_level_ar": level_ar,
+        "phq_level": level_rule,
+        "phq_level_ar": level_rule_ar,
+
+        # موديلك (لو محمّل)
+        "model_level": model_level,
+        "model_level_ar": model_level_ar,
+        "model_class": model_class,
+
         "answers": answers,
     }
-
-
 # ----------------------------
 # Sentiment predict
 # ----------------------------
