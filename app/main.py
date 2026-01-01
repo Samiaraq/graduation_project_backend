@@ -163,7 +163,6 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
     return {
         "message": "Login successful",
         "user_id": user.user_id,
-        "username": user.username,
         "email": user.email,
     }
 
