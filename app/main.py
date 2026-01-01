@@ -331,7 +331,11 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     if predict_depression_text is None:
         raise HTTPException(status_code=503, detail="Sentiment model not loaded on server")
 
-    label = predict_depression_text(payload.text)
+    try:
+        label = predict_depression_text(payload.text)
+    except Exception as e:
+        # عشان ما يعطيكي 502 ويطيح السيرفر
+        raise HTTPException(status_code=500, detail=f"Sentiment inference failed: {str(e)}")
 
     row = models.SentimentEntry(
         user_id=payload.user_id,
@@ -344,7 +348,7 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="sentiment",
-        score=None,
+        score=0,          # مهم (شوفي السبب B تحت)
         level=label,
     ))
 
@@ -357,8 +361,6 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
         "label": label,
         "sentiment_id": row.sentiment_id,
     }
-
-
 # ----------------------------
 # Image endpoint (upload + predict)
 # ----------------------------
