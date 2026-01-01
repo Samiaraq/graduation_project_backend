@@ -83,27 +83,16 @@ def health_check():
 # Helpers (DOB)
 # DB عندك dob VARCHAR(50) => نخزن dob نص
 # ----------------------------
-def parse_dob(dob_str: Optional[str]) -> Optional[str]:
-    """
-    Validate dob format only, return same string to store in DB (VARCHAR).
-    Allowed: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD
-    """
+def normalize_dob_str(dob_str: Optional[str]) -> Optional[str]:
     if not dob_str:
         return None
-
-    dob_str = dob_str.strip()
-
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
         try:
-            datetime.datetime.strptime(dob_str, fmt)
-            return dob_str  # ✅ نخزن النص نفسه
+            dt = datetime.datetime.strptime(dob_str, fmt).date()
+            return dt.strftime("%Y-%m-%d")  # نخزنه كنص موحّد
         except ValueError:
             continue
-
-    raise HTTPException(
-        status_code=400,
-        detail="dob format invalid. Use YYYY-MM-DD (مثال: 2001-01-01)"
-    )
+    return dob_str
 
 
 # ----------------------------
@@ -134,7 +123,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         password_hash=password_hash,
-        dob=parse_dob(payload.dob),     # ✅ string (مو date)
+        dob=normalize_dob_str(payload.dob),     # ✅ string (مو date)
         gender=payload.gender,
     )
 
