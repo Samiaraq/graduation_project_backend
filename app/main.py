@@ -76,6 +76,16 @@ def health_check():
 # ----------------------------
 # Auth schemas
 # ----------------------------
+def parse_dob(dob_str: Optional[str]):
+    if not dob_str:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.datetime.strptime(dob_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
 class RegisterRequest(BaseModel):
     username: str
     email: str
@@ -101,7 +111,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         password_hash=password_hash,
-        dob=payload.dob,
+        dob=parse_dob(payload.dob),
         gender=payload.gender,
     )
 
