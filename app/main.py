@@ -76,17 +76,18 @@ def health_check():
         "image_model_loaded": predict_image is not None,
         "sentiment_model_loaded": predict_depression_text is not None,
     }
+from sqlalchemy import text
 
 @app.get("/db-ping")
 def db_ping(db: Session = Depends(get_db)):
     try:
-        db.execute("SELECT 1")
-        return {"db": "ok"}
+        db.execute(text("SELECT 1"))
+        return {"ok": True}
     except Exception as e:
-        import traceback
+        # ✅ هذا أهم سطر: يطبع السبب الحقيقي في Logs تبعون Render
         print("DB PING ERROR:", repr(e))
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="DB connection failed")
+        raise HTTPException(status_code=500, detail=f"DB connection failed: {repr(e)}")
+
 # ----------------------------
 # Helpers (DOB)
 # DB عندك dob VARCHAR(50) => نخزن dob نص
