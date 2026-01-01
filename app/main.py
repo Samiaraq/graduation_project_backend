@@ -6,7 +6,6 @@ from datetime import date
 import datetime
 import torch
 import traceback
-
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -51,7 +50,6 @@ def on_startup():
     global phq9_model
 
     models.Base.metadata.create_all(bind=engine)
-
     # تحميل موديل PHQ (إذا موجود)
     if load_phq9_model and MLP:
         try:
