@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date
 import datetime
 import torch
+import traceback
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
@@ -22,7 +23,7 @@ except Exception:
     predict_image = None
 
 try:
-    from app.ml_models.sentemant.predict import predict_depression_text
+    from app.ml_models.sentimant.predict import predict_depression_text
 except Exception:
     predict_depression_text = None
 
@@ -78,7 +79,16 @@ def health_check():
         "sentiment_model_loaded": predict_depression_text is not None,
     }
 
-
+@app.get("/db-ping")
+def db_ping(db: Session = Depends(get_db)):
+    try:
+        db.execute("SELECT 1")
+        return {"db": "ok"}
+    except Exception as e:
+        import traceback
+        print("DB PING ERROR:", repr(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="DB connection failed")
 # ----------------------------
 # Helpers (DOB)
 # DB عندك dob VARCHAR(50) => نخزن dob نص
@@ -113,10 +123,12 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/register")
 def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
+    try:
+        existing = db.query(models.User).filter(models.User.email == payload.email).first()
+    except Exception as e:
+        print("DB ERROR in /auth/register:", repr(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Database error. Check server logs.")
     password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
 
     user = models.User(
