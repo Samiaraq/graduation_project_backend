@@ -14,7 +14,6 @@ class MLP(nn.Module):
 
             nn.Linear(8, 4),
             nn.ReLU(),
-            nn.Dropout(0.5),
 
             nn.Linear(4, num_classes),
         )
