@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date
 import datetime
 import torch
+
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,7 +13,9 @@ from sqlalchemy.orm import Session
 from .database import engine, get_db
 from . import models
 
-# ML imports (خليهم داخل try عشان ما يكسروا الديبلوي لو ناقص dependency)
+# ----------------------------
+# ML imports (داخل try حتى ما يكسر الديبلوي)
+# ----------------------------
 try:
     from app.ml_models.image.loader import predict_image
 except Exception:
@@ -32,31 +35,34 @@ except Exception:
     load_phq9_model = None
 
 
-
 app = FastAPI(title="Graduation Project API")
 
 os.makedirs("uploads", exist_ok=True)
 
 phq9_model = None
 
-from app.ml_models.phq_9.model_def import MLP
-from app.ml_models.model_loader import load_phq9_model
 
-phq9_model = None
-
+# ----------------------------
+# Startup
+# ----------------------------
 @app.on_event("startup")
 def on_startup():
     global phq9_model
 
     models.Base.metadata.create_all(bind=engine)
 
-    try:
-        # ✅ مرري الـ CLASS نفسه
-        phq9_model = load_phq9_model(MLP)
-        print("PHQ9 model loaded ✅")
-    except Exception as e:
-        phq9_model = None
-        print("WARNING: PHQ9 model failed to load:", repr(e))
+    # تحميل موديل PHQ (إذا موجود)
+    if load_phq9_model and MLP:
+        try:
+            # ✅ مرري الـ CLASS نفسه (زي شغلك الحالي)
+            phq9_model = load_phq9_model(MLP)
+            print("PHQ9 model loaded ✅")
+        except Exception as e:
+            phq9_model = None
+            print("WARNING: PHQ9 model failed to load:", repr(e))
+    else:
+        print("PHQ9 loader not available (skipped).")
+
 
 @app.get("/")
 def root():
@@ -74,18 +80,35 @@ def health_check():
 
 
 # ----------------------------
-# Auth schemas
+# Helpers (DOB)
+# DB عندك dob VARCHAR(50) => نخزن dob نص
 # ----------------------------
-def parse_dob(dob_str: Optional[str]):
+def parse_dob(dob_str: Optional[str]) -> Optional[str]:
+    """
+    Validate dob format only, return same string to store in DB (VARCHAR).
+    Allowed: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD
+    """
     if not dob_str:
         return None
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+
+    dob_str = dob_str.strip()
+
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
         try:
-            return datetime.datetime.strptime(dob_str, fmt).date()
+            datetime.datetime.strptime(dob_str, fmt)
+            return dob_str  # ✅ نخزن النص نفسه
         except ValueError:
             continue
-    return None
 
+    raise HTTPException(
+        status_code=400,
+        detail="dob format invalid. Use YYYY-MM-DD (مثال: 2001-01-01)"
+    )
+
+
+# ----------------------------
+# Auth schemas
+# ----------------------------
 class RegisterRequest(BaseModel):
     username: str
     email: str
@@ -111,7 +134,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         password_hash=password_hash,
-        dob=parse_dob(payload.dob),
+        dob=parse_dob(payload.dob),     # ✅ string (مو date)
         gender=payload.gender,
     )
 
@@ -199,6 +222,7 @@ class PHQRequest(BaseModel):
 
 PHQ_LEVELS_5 = ["Minimal", "Mild", "Moderate", "Moderately Severe", "Severe"]
 
+
 def calc_age(dob_str: str) -> int:
     if not dob_str:
         return 0
@@ -221,9 +245,7 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     if len(answers) != 9:
         raise HTTPException(status_code=400, detail="phq_answers must contain exactly 9 numbers")
 
-    # --------
-    # (A) نحفظ مثل ما هو (نفس شغلك)
-    # --------
+    # (A) نخزن التقليدي
     total = sum(answers)
     level_rule = phq_level_from_score(total)
     level_rule_ar = PHQ_AR.get(level_rule, level_rule)
@@ -234,13 +256,11 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         q4=answers[3], q5=answers[4], q6=answers[5],
         q7=answers[6], q8=answers[7], q9=answers[8],
         total_score=total,
-        depression_level=level_rule,   # نخليه نفس التصنيف التقليدي
+        depression_level=level_rule,
     )
     db.add(phq_row)
 
-    # --------
     # (B) تنبؤ الموديل (11 مدخل: 9 + age + gender)
-    # --------
     model_level = None
     model_level_ar = None
     model_class = None
@@ -256,7 +276,7 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         else:
             gender_val = 0
 
-        x = answers + [age, gender_val]  # صاروا 11
+        x = answers + [age, gender_val]  # 11
 
         with torch.no_grad():
             inp = torch.tensor([x], dtype=torch.float32)
@@ -265,15 +285,14 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
             model_level = PHQ_LEVELS_5[model_class]
             model_level_ar = PHQ_AR.get(model_level, model_level)
 
-        # نخزن نتيجة الموديل بجدول depression_levels (كمصدر phq_model)
         db.add(models.DepressionLevel(
             user_id=payload.user_id,
             source="phq_model",
-            score=model_class,      # 0..4
+            score=model_class,   # 0..4
             level=model_level,
         ))
 
-    # ونخزن كمان التصنيف التقليدي زي ما كنتي
+    # نخزن كمان التقليدي
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="phq9",
@@ -289,18 +308,18 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         "phq_id": phq_row.phq_id,
         "user_id": payload.user_id,
 
-        # التقليدي (حسب مجموع الدرجات)
         "phq_total": total,
         "phq_level": level_rule,
         "phq_level_ar": level_rule_ar,
 
-        # موديلك (لو محمّل)
         "model_level": model_level,
         "model_level_ar": model_level_ar,
         "model_class": model_class,
 
         "answers": answers,
     }
+
+
 # ----------------------------
 # Sentiment predict
 # ----------------------------
@@ -378,7 +397,7 @@ async def upload_image(
     db.add(models.DepressionLevel(
         user_id=user_id,
         source="image",
-        score=int(prob * 100),   # نسبة مئوية مثلاً
+        score=int(prob * 100),
         level=label,
     ))
 
