@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, TIMESTAMP, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -30,23 +30,23 @@ class User(Base):
 class PHQ9Answer(Base):
     __tablename__ = "phq9_answers"
 
-    phq_id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)   # <-- خليها هي الـ PK
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
 
-    q1 = Column(Integer, nullable=False)
-    q2 = Column(Integer, nullable=False)
-    q3 = Column(Integer, nullable=False)
-    q4 = Column(Integer, nullable=False)
-    q5 = Column(Integer, nullable=False)
-    q6 = Column(Integer, nullable=False)
-    q7 = Column(Integer, nullable=False)
-    q8 = Column(Integer, nullable=False)
-    q9 = Column(Integer, nullable=False)
+    q1 = Column(Integer)
+    q2 = Column(Integer)
+    q3 = Column(Integer)
+    q4 = Column(Integer)
+    q5 = Column(Integer)
+    q6 = Column(Integer)
+    q7 = Column(Integer)
+    q8 = Column(Integer)
+    q9 = Column(Integer)
 
     total_score = Column(Integer, nullable=False)
-    depression_level = Column(String(50), nullable=False)
+    depression_level = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
 
-    created_at = Column(TIMESTAMP, server_default=func.now())
 
     user = relationship("User", back_populates="phq9_answers")
 

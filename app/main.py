@@ -304,17 +304,14 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
     return {
         "message": "phq saved",
-        "phq_id": phq_row.phq_id,
+        "phq_id": getattr(phq_row, "phq_id", None) or phq_row.id,
         "user_id": payload.user_id,
-
         "phq_total": total,
         "phq_level": level_rule,
         "phq_level_ar": level_rule_ar,
-
         "model_level": model_level,
         "model_level_ar": model_level_ar,
         "model_class": model_class,
-
         "answers": answers,
     }
 
