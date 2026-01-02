@@ -237,7 +237,7 @@ def calc_age(dob_str: str) -> int:
 
 
 # ✅ نفس دالة التدريب بالزبط
-def categorize_age(age: int) -> int:
+def age_to_group(age: int) -> int:
     if age < 18:
         return 0
     elif age < 30:
@@ -278,8 +278,8 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
     if phq9_model is not None:
         # age_group بدل age الحقيقي
-        age_years = calc_age(user.dob) if user.dob else 0
-        age_group = categorize_age(age_years)
+        age_real = calc_age(user.dob) if user.dob else 0
+        age_group = age_to_group(age_real)
 
         # ✅ gender نفس التدريب: F=0 / M=1
         g = (user.gender or "").strip().lower()
@@ -292,9 +292,13 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
         # ✅ ترتيب الأعمدة مثل التدريب تماماً: q1..q9, gender, age_group
         x = answers + [gender_val, age_group]  # 11
+        from app.ml_models.model_loader import scale_phq_input
+        import numpy as np
+        x_np = np.array([x], dtype=np.float32)  # shape (1, 11)
+        x_scaled = scale_phq_input(x_np)
 
         with torch.no_grad():
-            inp = torch.tensor([x], dtype=torch.float32)
+            inp = torch.tensor(x_scaled, dtype=torch.float32)
             logits = phq9_model(inp)
             model_class = int(torch.argmax(logits, dim=1).item())
             model_level = PHQ_LEVELS_5[model_class]
