@@ -11,6 +11,11 @@ def predict_depression_text(text: str):
         truncation=True,
         max_length=128
     )
+    enc = {k: v.to("cpu") for k, v in enc.items()}
+
+    # ✅ احتياط: بعض الموديلات ما بدها token_type_ids
+    if "token_type_ids" in enc:
+        enc.pop("token_type_ids")
 
     with torch.no_grad():
         out = model(**enc)

@@ -60,12 +60,7 @@ def on_startup():
             print("WARNING: PHQ9 model failed to load:", repr(e))
     else:
         print("PHQ9 loader not available (skipped).")
-    try:
-        from app.ml_models.sentimant.loader import load_sent_model
-        load_sent_model()
-        print("Sentiment model loaded ✅")
-    except Exception as e:
-        print("WARNING: Sentiment model failed to load:", repr(e))
+
 
 
 @app.get("/")
