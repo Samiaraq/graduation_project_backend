@@ -92,7 +92,8 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('مساحتك الآمنة', style: TextStyle(color: Colors.white70, fontFamily: 'Beiruti')),
+        title: const Text('مساحتك الآمنة',
+            style: TextStyle(color: Colors.white70, fontFamily: 'Beiruti')),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -109,9 +110,20 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 20),
-                  const Text('الخطوة 2 من 3', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Beiruti', fontSize: 16, color: AppColors.secondaryText)),
+                  const Text('الخطوة 2 من 3',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontFamily: 'Beiruti',
+                          fontSize: 16,
+                          color: AppColors.secondaryText)),
                   const SizedBox(height: 10),
-                  const Text('بماذا تشعر الآن؟', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Beiruti', fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primaryText)),
+                  const Text('بماذا تشعر الآن؟',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontFamily: 'Beiruti',
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primaryText)),
                   const SizedBox(height: 40),
                   Expanded(child: _buildTextField()),
                   const SizedBox(height: 20),
@@ -161,7 +173,9 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
             child: IconButton(
               icon: Icon(
                 _isListening ? Icons.mic : Icons.mic_none,
-                color: _isListening ? Colors.redAccent : AppColors.buttonBackground,
+                color: _isListening
+                    ? Colors.redAccent
+                    : AppColors.buttonBackground,
                 size: 30,
               ),
               onPressed: _listen,
@@ -179,8 +193,10 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
         // يتم تفعيل الزر فقط إذا كان هناك نص (enabled == true)
         onPressed: enabled ? _proceedToNextScreen : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? AppColors.buttonBackground : Colors.grey.shade600,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          backgroundColor:
+              enabled ? AppColors.buttonBackground : Colors.grey.shade600,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           padding: const EdgeInsets.symmetric(vertical: 16),
         ),
         // لا حاجة لعرض مؤشر تحميل هنا بعد الآن
@@ -193,28 +209,27 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
       ),
     );
   }
+}
 
- 
-   }
-   Widget _buildDecorativeCircles(Size size) {
-    return Stack(
-      children: [
-        Positioned(
-          top: -size.width * 0.3,
-          right: -size.width * 0.4,
-          child: Container(
-            width: size.width * 0.9,
-            height: size.width * 0.9,
-            decoration: const BoxDecoration(
-              color: AppColors.decorativeCircle,
-              shape: BoxShape.circle,
-            ),
+Widget _buildDecorativeCircles(Size size) {
+  return Stack(
+    children: [
+      Positioned(
+        top: -size.width * 0.3,
+        right: -size.width * 0.4,
+        child: Container(
+          width: size.width * 0.9,
+          height: size.width * 0.9,
+          decoration: const BoxDecoration(
+            color: AppColors.decorativeCircle,
+            shape: BoxShape.circle,
           ),
         ),
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-          child: Container(color: Colors.transparent),
-        ),
-      ],
-    );
-  }
+      ),
+      BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+        child: Container(color: Colors.transparent),
+      ),
+    ],
+  );
+}

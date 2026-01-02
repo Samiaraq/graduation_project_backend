@@ -35,24 +35,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _submitForm() async {
     if (_selectedGender == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار الجنس')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('الرجاء اختيار الجنس')));
       return;
     }
     if (!_agreedToTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب الموافقة على شروط الخصوصية أولاً')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('يجب الموافقة على شروط الخصوصية أولاً')));
       return;
     }
 
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
+        print('REGISTER REQUEST DATA:');
+        print('username: ${_nameController.text.trim()}');
+        print('email: ${_emailController.text.trim()}');
+        print('password: ${_passwordController.text}');
+        print('gender: $_selectedGender');
+        print('dateOfBirth: $_selectedDate');
+
         final result = await _apiService.registerUser(
           username: _nameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          gender: _selectedGender!,
-          dateOfBirth: _selectedDate!,
+          apiGender: _selectedGender == 'أنثى' ? 'female' : 'male',
+          dob: '${_selectedDate!.year.toString().padLeft(4, '0')}-'
+              '${_selectedDate!.month.toString().padLeft(2, '0')}-'
+              '${_selectedDate!.day.toString().padLeft(2, '0')}',
         );
+
+        print('REGISTER RESPONSE: $result');
 
         final int userId = result['user_id'];
         context.read<AppData>().setUserId(userId);
@@ -117,13 +130,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       const Text(
                         'ابدأ رحلتك في التعافي',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontFamily: 'Beiruti', fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primaryText),
+                        style: TextStyle(
+                            fontFamily: 'Beiruti',
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryText),
                       ),
                       const SizedBox(height: 8),
                       const Text(
                         'إنشاء حساب',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontFamily: 'Beiruti', fontSize: 20, color: AppColors.secondaryText),
+                        style: TextStyle(
+                            fontFamily: 'Beiruti',
+                            fontSize: 20,
+                            color: AppColors.secondaryText),
                       ),
                       const SizedBox(height: 30),
                       _buildTextFormField(
@@ -196,14 +216,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         onPressed: _isLoading ? null : _submitForm,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.buttonBackground,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30)),
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           elevation: 5,
                           shadowColor: Colors.black.withOpacity(0.2),
                         ),
                         child: _isLoading
-                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                            : const Text('إنشاء حساب', style: TextStyle(fontFamily: 'Beiruti', fontSize: 18, color: AppColors.primaryText, fontWeight: FontWeight.bold)),
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 3))
+                            : const Text('إنشاء حساب',
+                                style: TextStyle(
+                                    fontFamily: 'Beiruti',
+                                    fontSize: 18,
+                                    color: AppColors.primaryText,
+                                    fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(height: 20),
                       _buildLoginLink(context),

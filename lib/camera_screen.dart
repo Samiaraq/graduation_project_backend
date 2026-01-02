@@ -3,7 +3,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert'; // ضروري لتحويل الصورة
 import 'dart:ui';
 
 import 'app_colors.dart';
@@ -74,15 +73,10 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       // الخطوة أ: التقاط الصورة
       final XFile image = await _controller!.takePicture();
-
-      // الخطوة ب: قراءة بايتات الصورة وتحويلها إلى Base64
-      final imageBytes = await image.readAsBytes();
-      final base64Image = base64Encode(imageBytes);
-
+      
       // الخطوة ج: حفظ سلسلة Base64 في الـ Provider
       // استخدام listen: false هنا لأننا داخل دالة ولا نريد إعادة بناء الواجهة
-      context.read<AppData>().setFaceImage(base64Image);
-
+         context.read<AppData>().setFaceImage(image);
       // الخطوة د: تأثير الفلاش (لتحسين تجربة المستخدم)
       if (mounted) {
         setState(() => _isFlashing = true);
