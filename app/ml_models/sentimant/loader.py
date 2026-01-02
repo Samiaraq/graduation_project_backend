@@ -33,15 +33,22 @@ def load_sentemant():
         #نجيب الموديل من s3
         MODEL_PATH = ensure_model_file(
             filename="SentemantAnalysis.pt",
-            subdir="mdels"
+            subdir="models"
         )
 
         state = torch.load(MODEL_PATH, map_location="cpu")
-        _model.load_state_dict(state)
+        # حماية لو كان محفوظ بطريقة مختلفة
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+        if isinstance(state, dict):
+            state = {k.replace("module.", ""): v for k, v in state.items()}
+
+        _model.load_state_dict(state , strict=True)
         _model.eval()
 
     return _model, _tokenizer
 
 
 def load_sent_model():
+    load_sentemant()
     return None
