@@ -323,7 +323,6 @@ class SentimentRequest(BaseModel):
     user_id: int
     text: str
 
-
 @app.post("/sentiment/predict")
 def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     ensure_user_exists(db, payload.user_id)
@@ -334,8 +333,8 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     try:
         label = predict_depression_text(payload.text)
     except Exception as e:
-        # عشان ما يعطيكي 502 ويطيح السيرفر
-        raise HTTPException(status_code=500, detail=f"Sentiment inference failed: {str(e)}")
+        # بدل ما يوقع السيرفر ويصير 502
+        raise HTTPException(status_code=503, detail=f"Sentiment failed/warming up: {str(e)}")
 
     row = models.SentimentEntry(
         user_id=payload.user_id,
@@ -348,7 +347,7 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="sentiment",
-        score=0,          # مهم (شوفي السبب B تحت)
+        score=0,
         level=label,
     ))
 
