@@ -236,6 +236,18 @@ def calc_age(dob_str: str) -> int:
     return 0
 
 
+# ✅ نفس دالة التدريب بالزبط
+def categorize_age(age: int) -> int:
+    if age < 18:
+        return 0
+    elif age < 30:
+        return 1
+    elif age < 50:
+        return 2
+    else:
+        return 3
+
+
 @app.post("/phq/submit")
 def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     user = ensure_user_exists(db, payload.user_id)
@@ -259,23 +271,27 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     )
     db.add(phq_row)
 
-    # (B) تنبؤ الموديل (11 مدخل: 9 + age + gender)
+    # (B) تنبؤ الموديل (11 مدخل: 9 + gender + age_group) ✅ مطابق للتدريب
     model_level = None
     model_level_ar = None
     model_class = None
 
     if phq9_model is not None:
-        age = calc_age(user.dob) if user.dob else 0
+        # age_group بدل age الحقيقي
+        age_years = calc_age(user.dob) if user.dob else 0
+        age_group = categorize_age(age_years)
 
+        # ✅ gender نفس التدريب: F=0 / M=1
         g = (user.gender or "").strip().lower()
-        if g in ["female", "f", "أنثى", "انثى", "بنت", "امرأة", "woman"]:
+        if g in ["m", "male", "ذكر", "ولد", "رجل", "man"]:
             gender_val = 1
-        elif g in ["male", "m", "ذكر", "ولد", "رجل", "man"]:
+        elif g in ["f", "female", "أنثى", "انثى", "بنت", "امرأة", "woman"]:
             gender_val = 0
         else:
-            gender_val = 0
+            gender_val = 0  # default آمن
 
-        x = answers + [age, gender_val]  # 11
+        # ✅ ترتيب الأعمدة مثل التدريب تماماً: q1..q9, gender, age_group
+        x = answers + [gender_val, age_group]  # 11
 
         with torch.no_grad():
             inp = torch.tensor([x], dtype=torch.float32)
@@ -314,8 +330,6 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         "model_class": model_class,
         "answers": answers,
     }
-
-
 # ----------------------------
 # Sentiment predict
 # ----------------------------
