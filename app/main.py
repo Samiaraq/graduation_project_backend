@@ -2,16 +2,38 @@ import os
 import json
 import hashlib
 from typing import Optional, List
-from datetime import date
-import datetime
+from datetime import date, datetime, timedelta
+import datetime as dt
 import torch
 import traceback
+
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+from jose import jwt  # pip install python-jose[cryptography]
 
 from .database import engine, get_db
 from . import models
+
+
+# ----------------------------
+# JWT Config
+# ----------------------------
+# مهم: خليهم ENV على Render
+# SECRET_KEY لازم يكون طويل وعشوائي
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_TO_A_LONG_RANDOM_SECRET")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 # ----------------------------
 # ML imports (داخل try حتى ما يكسر الديبلوي)
@@ -38,7 +60,6 @@ except Exception:
 app = FastAPI(title="Graduation Project API")
 
 os.makedirs("uploads", exist_ok=True)
-
 phq9_model = None
 
 
@@ -50,10 +71,9 @@ def on_startup():
     global phq9_model
 
     models.Base.metadata.create_all(bind=engine)
-    # تحميل موديل PHQ (إذا موجود)
+
     if load_phq9_model and MLP:
         try:
-            # ✅ مرري الـ CLASS نفسه (زي شغلك الحالي)
             phq9_model = load_phq9_model(MLP)
             print("PHQ9 model loaded ✅")
         except Exception as e:
@@ -76,7 +96,7 @@ def health_check():
         "image_model_loaded": predict_image is not None,
         "sentiment_model_loaded": predict_depression_text is not None,
     }
-from sqlalchemy import text
+
 
 @app.get("/db-ping")
 def db_ping(db: Session = Depends(get_db)):
@@ -84,21 +104,21 @@ def db_ping(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
         return {"ok": True}
     except Exception as e:
-        # ✅ هذا أهم سطر: يطبع السبب الحقيقي في Logs تبعون Render
         print("DB PING ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=f"DB connection failed: {repr(e)}")
 
+
 # ----------------------------
 # Helpers (DOB)
-# DB عندك dob VARCHAR(50) => نخزن dob نص
+# DB dob VARCHAR(50) => نخزن dob نص
 # ----------------------------
 def normalize_dob_str(dob_str: Optional[str]) -> Optional[str]:
     if not dob_str:
         return None
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
         try:
-            dt = datetime.datetime.strptime(dob_str, fmt).date()
-            return dt.strftime("%Y-%m-%d")  # نخزنه كنص موحّد
+            d = dt.datetime.strptime(dob_str, fmt).date()
+            return d.strftime("%Y-%m-%d")
         except ValueError:
             continue
     return dob_str
@@ -128,13 +148,17 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
         print("DB ERROR in /auth/register:", repr(e))
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Database error. Check server logs.")
+
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
     password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
 
     user = models.User(
         username=payload.username,
         email=payload.email,
         password_hash=password_hash,
-        dob=normalize_dob_str(payload.dob),     # ✅ string (مو date)
+        dob=normalize_dob_str(payload.dob),
         gender=payload.gender,
     )
 
@@ -142,11 +166,16 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
+    # (اختياري) رجّعي توكن بعد التسجيل كمان
+    access_token = create_access_token({"sub": str(user.user_id), "email": user.email})
+
     return {
         "message": "User registered successfully",
         "user_id": user.user_id,
         "username": user.username,
         "email": user.email,
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
 
@@ -160,10 +189,14 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
     if user.password_hash != password_hash:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    access_token = create_access_token({"sub": str(user.user_id), "email": user.email})
+
     return {
         "message": "Login successful",
         "user_id": user.user_id,
         "email": user.email,
+        "access_token": access_token,   # ✅ هذا اللي كان ناقص
+        "token_type": "bearer",
     }
 
 
@@ -227,9 +260,9 @@ def calc_age(dob_str: str) -> int:
         return 0
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
         try:
-            dt = datetime.datetime.strptime(dob_str, fmt).date()
+            d = dt.datetime.strptime(dob_str, fmt).date()
             today = date.today()
-            age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
+            age = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
             return max(age, 0)
         except Exception:
             continue
@@ -244,7 +277,6 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     if len(answers) != 9:
         raise HTTPException(status_code=400, detail="phq_answers must contain exactly 9 numbers")
 
-    # (A) نخزن التقليدي
     total = sum(answers)
     level_rule = phq_level_from_score(total)
     level_rule_ar = PHQ_AR.get(level_rule, level_rule)
@@ -259,7 +291,6 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     )
     db.add(phq_row)
 
-    # (B) تنبؤ الموديل (11 مدخل: 9 + age + gender)
     model_level = None
     model_level_ar = None
     model_class = None
@@ -287,11 +318,10 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         db.add(models.DepressionLevel(
             user_id=payload.user_id,
             source="phq_model",
-            score=model_class,   # 0..4
+            score=model_class,
             level=model_level,
         ))
 
-    # نخزن كمان التقليدي
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="phq9",
@@ -304,7 +334,7 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
 
     return {
         "message": "phq saved",
-        "phq_id": getattr(phq_row, "phq_id", None) or phq_row.id,
+        "phq_id": getattr(phq_row, "phq_id", None) or getattr(phq_row, "id", None),
         "user_id": payload.user_id,
         "phq_total": total,
         "phq_level": level_rule,
@@ -334,7 +364,6 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     try:
         label = predict_depression_text(payload.text)
     except Exception as e:
-        # عشان ما يعطيكي 502 ويطيح السيرفر
         raise HTTPException(status_code=500, detail=f"Sentiment inference failed: {str(e)}")
 
     row = models.SentimentEntry(
@@ -348,7 +377,7 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
     db.add(models.DepressionLevel(
         user_id=payload.user_id,
         source="sentiment",
-        score=0,          # مهم (شوفي السبب B تحت)
+        score=0,
         level=label,
     ))
 
@@ -361,6 +390,8 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
         "label": label,
         "sentiment_id": row.sentiment_id,
     }
+
+
 # ----------------------------
 # Image endpoint (upload + predict)
 # ----------------------------
