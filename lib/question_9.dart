@@ -20,7 +20,7 @@ class Question9 extends StatelessWidget {
       totalQuestions: 9,
       questionText:
           'الأفكار بأنك ستكون أفضل لو مت أو أن تؤذي نفسك بطريقة أو بأخرى',
-      imagePath: 'assets/images/q9.jpeg',
+      imagePath: 'assets/image/q9.jpg',
       onPrevious: () => Navigator.pop(context),
       isLast: true,
 

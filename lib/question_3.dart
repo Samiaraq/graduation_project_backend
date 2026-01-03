@@ -13,7 +13,7 @@ class Question3 extends StatelessWidget {
       questionNumber: 3,
       totalQuestions: 9,
       questionText: 'صعوبة في النوم أو الاستيقاظ في وقت مبكر',
-      imagePath: 'assets/images/q3.jpeg',
+      imagePath: 'assets/image/q3.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

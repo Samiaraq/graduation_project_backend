@@ -13,7 +13,7 @@ class Question6 extends StatelessWidget {
       questionNumber: 6,
       totalQuestions: 9,
       questionText: 'الشعور بأنك فاشل أو أنك شخص لا قيمة له',
-      imagePath: 'assets/images/q6.jpeg',
+      imagePath: 'assets/image/q6.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

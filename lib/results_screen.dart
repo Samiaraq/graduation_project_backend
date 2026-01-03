@@ -252,12 +252,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Future<void> _launchWhatsApp() async {
-    const String phoneNumber = '+962790343070';
+    const String phoneNumber = '962790343070';
     const String message =
         'مرحباً، لقد استخدمت تطبيق "Depresence" وأود الاستفسار عن إمكانية حجز جلسة استشارية.';
 
     final Uri whatsappUri = Uri.parse(
-      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}',
+      'https://wa.me/962790343070?text=${Uri.encodeComponent(message)}',
     );
 
     try {

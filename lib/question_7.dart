@@ -13,7 +13,7 @@ class Question7 extends StatelessWidget {
       questionNumber: 7,
       totalQuestions: 9,
       questionText: 'صعوبة في التركيز أو اتخاذ القرارات',
-      imagePath: 'assets/images/q7.jpeg',
+      imagePath: 'assets/image/q7.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

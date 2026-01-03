@@ -13,7 +13,7 @@ class Question8 extends StatelessWidget {
       questionNumber: 8,
       totalQuestions: 9,
       questionText: 'الحركة أو التحدث ببطء أو العكس',
-      imagePath: 'assets/images/q8.jpeg',
+      imagePath: 'assets/image/q8.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

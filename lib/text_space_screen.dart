@@ -32,12 +32,11 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
     _textController = TextEditingController(text: savedText);
   }
 
-  // --- 1. دالة تحويل الكلام إلى نص (لا تغيير هنا) ---
+  // --- 1. دالة تحويل الكلام إلى نص (تم تعديلها لإضافة النص الجديد بدل استبداله) ---
   void _listen() async {
     // طلب إذن استخدام الميكروفون
     var status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
-      // يمكنك إظهار رسالة للمستخدم هنا إذا رفض الإذن
       return;
     }
 
@@ -51,9 +50,17 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
         _speech.listen(
           onResult: (val) {
             setState(() {
-              // تحديث النص في الحقل وفي البروفايدر مباشرة
-              _textController.text = val.recognizedWords;
-              context.read<AppData>().setText(_textController.text);
+              // إضافة الكلام الجديد للنص الحالي بدل استبداله
+              final newText = _textController.text.isEmpty
+                  ? val.recognizedWords
+                  : '${_textController.text} ${val.recognizedWords}';
+              _textController.text = newText;
+              context.read<AppData>().setText(newText);
+
+              // تحريك المؤشر لنهاية النص بعد الإضافة
+              _textController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _textController.text.length),
+              );
             });
           },
         );
@@ -64,11 +71,8 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
     }
   }
 
-  // --- 2. دالة زر "التالي" (تم تبسيطها بشكل كبير) ---
+  // --- 2. دالة زر "التالي" ---
   void _proceedToNextScreen() {
-    // لا حاجة لاستدعاء الـ API هنا
-    // فقط نتأكد من أن النص تم حفظه (وهو يحدث تلقائياً مع كل تغيير)
-    // ثم ننتقل إلى الشاشة التالية
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const QuestionnaireWelcomeScreen()),
@@ -82,10 +86,9 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
     super.dispose();
   }
 
-  // --- 3. بناء الواجهة (تم تبسيط زر "التالي") ---
+  // --- 3. بناء الواجهة ---
   @override
   Widget build(BuildContext context) {
-    // مراقبة حالة النص لتفعيل/تعطيل زر "التالي"
     final bool hasText = context.watch<AppData>().hasText;
     final Size screenSize = MediaQuery.of(context).size;
 
@@ -118,16 +121,20 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
                           color: AppColors.secondaryText)),
                   const SizedBox(height: 10),
                   const Text('بماذا تشعر الآن؟',
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.right,
                       style: TextStyle(
                           fontFamily: 'Beiruti',
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.primaryText)),
+                          color: Color.fromARGB(255, 59, 81, 146))),
                   const SizedBox(height: 40),
                   Expanded(child: _buildTextField()),
                   const SizedBox(height: 20),
-                  _buildNextButton(hasText), // تمرير حالة النص للزر
+                  // زر "التالي" بعرض نفس TextField
+                  SizedBox(
+                    width: double.infinity,
+                    child: _buildNextButton(hasText),
+                  ),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -138,14 +145,14 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
     );
   }
 
-  // --- 4. الويدجتس المساعدة (لا تغيير هنا إلا في زر "التالي") ---
+  // --- 4. الويدجتس المساعدة ---
 
   Widget _buildTextField() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        border: Border.all(color: Colors.white),
       ),
       child: Stack(
         children: [
@@ -157,12 +164,11 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 16),
               textAlign: TextAlign.right,
               onChanged: (value) {
-                // مع كل حرف يكتبه المستخدم، يتم تحديث البروفايدر فوراً
                 context.read<AppData>().setText(value);
               },
               decoration: const InputDecoration(
-                hintText: 'اكتب هنا أو استخدم الميكروفون...',
-                hintStyle: TextStyle(color: AppColors.secondaryText),
+                hintText: 'اكتب هنا...',
+                hintStyle: TextStyle(color: Color.fromARGB(255, 68, 74, 83)),
                 border: InputBorder.none,
               ),
             ),
@@ -174,7 +180,7 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
               icon: Icon(
                 _isListening ? Icons.mic : Icons.mic_none,
                 color: _isListening
-                    ? Colors.redAccent
+                    ? const Color.fromARGB(255, 49, 169, 89)
                     : AppColors.buttonBackground,
                 size: 30,
               ),
@@ -187,26 +193,20 @@ class _TextSpaceScreenState extends State<TextSpaceScreen> {
   }
 
   Widget _buildNextButton(bool enabled) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40.0),
-      child: ElevatedButton(
-        // يتم تفعيل الزر فقط إذا كان هناك نص (enabled == true)
-        onPressed: enabled ? _proceedToNextScreen : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              enabled ? AppColors.buttonBackground : Colors.grey.shade600,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-        ),
-        // لا حاجة لعرض مؤشر تحميل هنا بعد الآن
-        child: const Text('التالي',
-            style: TextStyle(
-                fontFamily: 'Beiruti',
-                fontSize: 18,
-                color: AppColors.primaryText,
-                fontWeight: FontWeight.bold)),
+    return ElevatedButton(
+      onPressed: enabled ? _proceedToNextScreen : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            enabled ? AppColors.buttonBackground : Colors.grey.shade600,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        padding: const EdgeInsets.symmetric(vertical: 16),
       ),
+      child: const Text('التالي',
+          style: TextStyle(
+              fontFamily: 'Beiruti',
+              fontSize: 18,
+              color: AppColors.primaryText,
+              fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -215,17 +215,13 @@ Widget _buildDecorativeCircles(Size size) {
   return Stack(
     children: [
       Positioned(
-        top: -size.width * 0.3,
-        right: -size.width * 0.4,
+        bottom: -28,
+        left: 20,
+        right: 20,
         child: Container(
-          width: size.width * 0.9,
-          height: size.width * 0.9,
-          decoration: const BoxDecoration(
-            color: AppColors.decorativeCircle,
-            shape: BoxShape.circle,
-          ),
-        ),
-      ),
+            height: 56,
+            decoration: BoxDecoration(
+                color: AppColors.decorativeCircle, shape: BoxShape.circle))),
       BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
         child: Container(color: Colors.transparent),

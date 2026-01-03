@@ -16,7 +16,7 @@ class Question1 extends StatelessWidget {
       questionNumber: 1,
       totalQuestions: 9,
       questionText: 'قلة الاهتمام أو فقدان الاهتمام بالأشياء',
-      imagePath: 'assets/images/q1.jpeg',
+      imagePath: 'assets/image/q1.jpg',
       hasPrevious: false,
 
       // --- هنا نعدل onNext ليأخذ selectedAnswer ---

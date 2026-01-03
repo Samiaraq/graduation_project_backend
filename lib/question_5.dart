@@ -13,7 +13,7 @@ class Question5 extends StatelessWidget {
       questionNumber: 5,
       totalQuestions: 9,
       questionText: 'قلة الشهية أو الإفراط في الأكل',
-      imagePath: 'assets/images/q5.jpeg',
+      imagePath: 'assets/image/q5.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

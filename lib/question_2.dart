@@ -13,7 +13,7 @@ class Question2 extends StatelessWidget {
       questionNumber: 2,
       totalQuestions: 9,
       questionText: 'الشعور بالحزن أو الاكتئاب',
-      imagePath: 'assets/images/q2.jpeg',
+      imagePath: 'assets/image/q2.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },

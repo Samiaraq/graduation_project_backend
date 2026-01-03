@@ -13,7 +13,7 @@ class Question4 extends StatelessWidget {
       questionNumber: 4,
       totalQuestions: 9,
       questionText: 'الشعور بالتعب أو فقدان الطاقة',
-      imagePath: 'assets/images/q4.jpeg',
+      imagePath: 'assets/image/q4.jpg',
       onPrevious: () {
         Navigator.pop(context);
       },
