@@ -1,8 +1,9 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 class AppData extends ChangeNotifier {
-  /// صورة الوجه
-  String? _faceImageBase64;
+  /// صورة الوجه (XFile من الكاميرا)
+  XFile? _faceImageFile;
 
   /// النص المكتوب أو المسجّل صوتيًا
   String textInput = '';
@@ -20,21 +21,23 @@ class AppData extends ChangeNotifier {
 
   /// نتيجة التحليل من الـ API
   Map<String, dynamic>? analysisResult;
-    // ================== UserId ==================
 
+  // ================== UserId ==================
   void setUserId(int id) {
     userId = id;
     notifyListeners();
   }
 
   // ================== IMAGE ==================
-  void setFaceImage(String imageBase64) {
-    _faceImageBase64 = imageBase64;
+  void setFaceImage(XFile imageFile) {
+    _faceImageFile = imageFile;
     notifyListeners();
   }
 
-  String? get faceImageBase64 => _faceImageBase64;
-  bool get hasImage => _faceImageBase64 != null && _faceImageBase64!.isNotEmpty;
+  // ✅ getter جديد واضح الاسم
+  XFile? get faceImageFile => _faceImageFile;
+
+  bool get hasImage => _faceImageFile != null;
 
   // ================== TEXT ==================
   void setText(String text) {
@@ -78,9 +81,9 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ================== RESET (اختياري) ==================
+  // ================== RESET ==================
   void clearAll() {
-    _faceImageBase64 = null;
+    _faceImageFile = null;
     textInput = '';
     questionnaireAnswers.clear();
     name = null;

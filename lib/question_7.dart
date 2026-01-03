@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'question_screen.dart';
 import 'question_8.dart';
+import 'app_data_provider.dart';
+import 'package:provider/provider.dart';
 
 class Question7 extends StatelessWidget {
   const Question7({Key? key}) : super(key: key);
@@ -15,7 +17,10 @@ class Question7 extends StatelessWidget {
       onPrevious: () {
         Navigator.pop(context);
       },
-      onNext: () {
+ onNext: (int selectedAnswer) {
+        // حفظ الإجابة في البروفايدر
+        final appData = context.read<AppData>();
+        appData.setAnswer(7, selectedAnswer);
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const Question8()),

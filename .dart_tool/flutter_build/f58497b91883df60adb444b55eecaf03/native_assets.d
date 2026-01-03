@@ -1,0 +1,1 @@
+ C:\\Users\\shahe\\Desktop\\depresence_app\\.dart_tool\\flutter_build\\f58497b91883df60adb444b55eecaf03\\native_assets.yaml: 

@@ -1,12 +1,14 @@
 // lib/results_screen.dart
 
+import 'dart:io';
+import 'dart:ui';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:ui';
 
-import 'api_service.dart';
 import 'app_colors.dart';
+import 'api_service.dart';
 import 'app_data_provider.dart';
 
 class ResultsScreen extends StatefulWidget {
@@ -19,7 +21,7 @@ class ResultsScreen extends StatefulWidget {
 class _ResultsScreenState extends State<ResultsScreen> {
   final ApiService _apiService = ApiService();
   bool _isLoading = true;
-  String? _finalResultText; // سيحتوي على النص الإنجليزي من الـ API
+  String? _finalResultText; // النتيجة مباشرة من الـ API (بالعربي)
   String _errorMessage = '';
 
   @override
@@ -31,9 +33,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
   Future<void> _triggerAnalysis() async {
     final appData = context.read<AppData>();
 
-    if (appData.userId == null || appData.faceImageBase64 == null || appData.textInput.isEmpty) {
+    if (appData.userId == null ||
+        appData.faceImageFile == null ||
+        appData.textInput.isEmpty ||
+        !appData.isQuestionnaireComplete) {
       setState(() {
-        _errorMessage = 'بيانات غير مكتملة. يرجى التأكد من تسجيل الدخول، التقاط صورة، وكتابة نص.';
+        _errorMessage =
+            'بيانات غير مكتملة. يرجى التأكد من تسجيل الدخول، التقاط صورة، وكتابة نص، وإكمال الاستبيان.';
         _isLoading = false;
       });
       return;
@@ -41,26 +47,49 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
     try {
       final int userId = appData.userId!;
-      final String imageBase64 = appData.faceImageBase64!;
+      final XFile imageXFile = appData.faceImageFile!; // ✅ XFile
+      final File imageFile = File(imageXFile.path);    // ✅ تحويل إلى File
       final String textInput = appData.textInput;
-      final int score = appData.questionnaireAnswers.values.fold(0, (prev, curr) => prev + curr);
+      final List<int> phqAnswers =
+          appData.questionnaireAnswers.values.toList();
 
-      final result = await _apiService.submitCompleteAnalysis(
+      // ------------------- استدعاء PHQ -------------------
+      final phqResult = await _apiService.submitPHQ(
         userId: userId,
-        imageBase64: imageBase64,
-        textInput: textInput,
-        phqAnswersScore: score,
+        answers: phqAnswers,
       );
 
+      // ------------------- استدعاء Sentiment -------------------
+      final sentimentResult = await _apiService.submitSentiment(
+        userId: userId,
+        text: textInput,
+      );
+
+      // ------------------- استدعاء Image -------------------
+      final imageResult = await _apiService.uploadImage(
+        userId: userId,
+        imageFile: imageFile,
+      );
+
+      // ------------------- حفظ النتائج كلها في الـ Provider -------------------
+      final combinedResult = {
+        "phq": phqResult,
+        "sentiment": sentimentResult,
+        "image": imageResult,
+      };
+      appData.setAnalysisResult(combinedResult);
+
+      // تحديث النتيجة للعرض مباشرة
       setState(() {
-        // نحفظ النتيجة الإنجليزية الأصلية من الـ API
-        _finalResultText = result['prediction'] ?? 'لم يتم تحديد النتيجة من الخادم';
+        _finalResultText = phqResult['model_level_ar'] ??
+            phqResult['phq_level_ar'] ??
+            'نتيجة غير محددة';
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() {
-        _errorMessage = 'حدث خطأ أثناء التواصل مع الخادم: ${e.toString()}';
+        _errorMessage =
+            'حدث خطأ أثناء التواصل مع الخادم: ${e.toString()}';
         _isLoading = false;
       });
     }
@@ -71,11 +100,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('النتيجة النهائية', style: TextStyle(fontFamily: 'Beiruti', color: Colors.white)),
+        title: const Text('النتيجة النهائية',
+            style: TextStyle(fontFamily: 'Beiruti', color: Colors.white)),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        automaticallyImplyLeading: false, // لمنع زر الرجوع التلقائي
+        automaticallyImplyLeading: true,
       ),
       body: Stack(
         children: [
@@ -97,8 +127,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
         children: [
           CircularProgressIndicator(color: Colors.white),
           SizedBox(height: 20),
-          Text('نقوم بتحليل بياناتك الآن...', style: TextStyle(fontFamily: 'Beiruti', color: AppColors.primaryText, fontSize: 18)),
-          Text('قد تستغرق هذه العملية بضع لحظات', style: TextStyle(fontFamily: 'Beiruti', color: AppColors.secondaryText, fontSize: 14)),
+          Text('نقوم بتحليل بياناتك الآن...',
+              style: TextStyle(
+                  fontFamily: 'Beiruti',
+                  color: AppColors.primaryText,
+                  fontSize: 18)),
+          Text('قد تستغرق هذه العملية بضع لحظات',
+              style: TextStyle(
+                  fontFamily: 'Beiruti',
+                  color: AppColors.secondaryText,
+                  fontSize: 14)),
         ],
       ),
     );
@@ -113,15 +151,22 @@ class _ResultsScreenState extends State<ResultsScreen> {
           children: [
             const Icon(Icons.error_outline, color: Colors.redAccent, size: 60),
             const SizedBox(height: 20),
-            Text(
+            const Text(
               'حدث خطأ',
-              style: const TextStyle(fontFamily: 'Beiruti', color: AppColors.primaryText, fontSize: 24, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  fontFamily: 'Beiruti',
+                  color: AppColors.primaryText,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Text(
               _errorMessage,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontFamily: 'Beiruti', color: AppColors.secondaryText, fontSize: 16),
+              style: const TextStyle(
+                  fontFamily: 'Beiruti',
+                  color: AppColors.secondaryText,
+                  fontSize: 16),
             ),
           ],
         ),
@@ -129,36 +174,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
-  // --- دالة عرض النتائج (تم تعديلها لتشمل الترجمة) ---
   Widget _buildResultsDisplay() {
-    // --- 1. قاموس الترجمة ---
-    String getArabicTranslation(String? englishResult) {
-      switch (englishResult) {
-        case 'Severe Depression':
-          return 'اكتئاب شديد';
-        case 'Moderate Depression':
-          return 'اكتئاب متوسط';
-        case 'Mild Depression':
-          return 'اكتئاب خفيف';
-        case 'Not Depressed':
-          return 'غير مكتئب';
-        default:
-          // في حال جاء نص غير متوقع من الـ API
-          return englishResult ?? 'نتيجة غير محددة';
-      }
-    }
-
-    // --- 2. الحصول على النص المترجم ---
-    final String arabicResult = getArabicTranslation(_finalResultText);
-
-    // --- 3. بناء النصوص بناءً على النتيجة المترجمة ---
     String title = 'تحليلك الشخصي';
     String body;
 
-    if (_finalResultText == 'Not Depressed') {
-      body = 'بناءً على تحليل بياناتك، لا تظهر حالياً مؤشرات واضحة للاكتئاب. تذكر أن هذه مجرد أداة مساعدة، وننصحك دائماً بالاهتمام بصحتك النفسية.';
+    if (_finalResultText == null || _finalResultText == 'غير مكتئب') {
+      body =
+          'بناءً على تحليل بياناتك، لا تظهر حالياً مؤشرات واضحة للاكتئاب. تذكر أن هذه مجرد أداة مساعدة، وننصحك دائماً بالاهتمام بصحتك النفسية.';
     } else {
-      body = 'بناءً على تحليل بياناتك، تظهر المؤشرات أن حالتك قد تكون: "$arabicResult".';
+      body =
+          'بناءً على تحليل بياناتك، تظهر المؤشرات أن حالتك قد تكون: "$_finalResultText".';
     }
 
     return SafeArea(
@@ -178,19 +203,46 @@ class _ResultsScreenState extends State<ResultsScreen> {
               ),
               child: Column(
                 children: [
-                  Text(title, textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Beiruti', fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primaryText)),
+                  Text(title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontFamily: 'Beiruti',
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primaryText)),
                   const SizedBox(height: 20),
-                  Text(body, textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Beiruti', fontSize: 18, color: AppColors.secondaryText, height: 1.5)),
+                  Text(body,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontFamily: 'Beiruti',
+                          fontSize: 18,
+                          color: AppColors.secondaryText,
+                          height: 1.5)),
                 ],
               ),
             ),
             const Spacer(),
-            const Text('هذا التحليل ليس تشخيصاً طبياً، بل هو أداة لمساعدتك على فهم نفسك بشكل أفضل. نوصي بشدة بالتواصل مع مختص.', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Beiruti', fontSize: 14, color: AppColors.secondaryText)),
+            const Text(
+                'هذا التحليل ليس تشخيصاً طبياً، بل هو أداة لمساعدتك على فهم نفسك بشكل أفضل. نوصي بشدة بالتواصل مع مختص.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontFamily: 'Beiruti',
+                    fontSize: 14,
+                    color: AppColors.secondaryText)),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _launchWhatsApp,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.buttonBackground, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)), padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text('تواصل مع مختص الآن', style: TextStyle(fontFamily: 'Beiruti', fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.buttonBackground,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30)),
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
+              child: const Text('تواصل مع مختص الآن',
+                  style: TextStyle(
+                      fontFamily: 'Beiruti',
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 20),
           ],
@@ -199,13 +251,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
-  // --- دالة فتح واتساب (تم تحديثها بالرقم الحقيقي) ---
   Future<void> _launchWhatsApp() async {
     const String phoneNumber = '+962790343070';
-    const String message = 'مرحباً، لقد استخدمت تطبيق "Depresence" وأود الاستفسار عن إمكانية حجز جلسة استشارية.';
+    const String message =
+        'مرحباً، لقد استخدمت تطبيق "Depresence" وأود الاستفسار عن إمكانية حجز جلسة استشارية.';
 
     final Uri whatsappUri = Uri.parse(
-      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message )}',
+      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}',
     );
 
     try {

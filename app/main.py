@@ -83,6 +83,7 @@ def on_startup():
         print("PHQ9 loader not available (skipped).")
 
 
+
 @app.get("/")
 def root():
     return {"message": "API is running"}
@@ -269,6 +270,18 @@ def calc_age(dob_str: str) -> int:
     return 0
 
 
+# ✅ نفس دالة التدريب بالزبط
+def age_to_group(age: int) -> int:
+    if age < 18:
+        return 0
+    elif age < 30:
+        return 1
+    elif age < 50:
+        return 2
+    else:
+        return 3
+
+
 @app.post("/phq/submit")
 def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     user = ensure_user_exists(db, payload.user_id)
@@ -291,25 +304,34 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
     )
     db.add(phq_row)
 
+    # (B) تنبؤ الموديل (11 مدخل: 9 + gender + age_group) ✅ مطابق للتدريب
     model_level = None
     model_level_ar = None
     model_class = None
 
     if phq9_model is not None:
-        age = calc_age(user.dob) if user.dob else 0
+        # age_group بدل age الحقيقي
+        age_real = calc_age(user.dob) if user.dob else 0
+        age_group = age_to_group(age_real)
 
+        # ✅ gender نفس التدريب: F=0 / M=1
         g = (user.gender or "").strip().lower()
-        if g in ["female", "f", "أنثى", "انثى", "بنت", "امرأة", "woman"]:
+        if g in ["m", "male", "ذكر", "ولد", "رجل", "man"]:
             gender_val = 1
-        elif g in ["male", "m", "ذكر", "ولد", "رجل", "man"]:
+        elif g in ["f", "female", "أنثى", "انثى", "بنت", "امرأة", "woman"]:
             gender_val = 0
         else:
-            gender_val = 0
+            gender_val = 0  # default آمن
 
-        x = answers + [age, gender_val]  # 11
+        # ✅ ترتيب الأعمدة مثل التدريب تماماً: q1..q9, gender, age_group
+        x = answers + [gender_val, age_group]  # 11
+        from app.ml_models.model_loader import scale_phq_input
+        import numpy as np
+        x_np = np.array([x], dtype=np.float32)  # shape (1, 11)
+        x_scaled = scale_phq_input(x_np)
 
         with torch.no_grad():
-            inp = torch.tensor([x], dtype=torch.float32)
+            inp = torch.tensor(x_scaled, dtype=torch.float32)
             logits = phq9_model(inp)
             model_class = int(torch.argmax(logits, dim=1).item())
             model_level = PHQ_LEVELS_5[model_class]
@@ -344,15 +366,12 @@ def submit_phq(payload: PHQRequest, db: Session = Depends(get_db)):
         "model_class": model_class,
         "answers": answers,
     }
-
-
 # ----------------------------
 # Sentiment predict
 # ----------------------------
 class SentimentRequest(BaseModel):
     user_id: int
     text: str
-
 
 @app.post("/sentiment/predict")
 def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
@@ -365,6 +384,8 @@ def sentiment_predict(payload: SentimentRequest, db: Session = Depends(get_db)):
         label = predict_depression_text(payload.text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sentiment inference failed: {str(e)}")
+        # بدل ما يوقع السيرفر ويصير 502
+        raise HTTPException(status_code=503, detail=f"Sentiment failed/warming up: {str(e)}")
 
     row = models.SentimentEntry(
         user_id=payload.user_id,
